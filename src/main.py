@@ -784,7 +784,7 @@ def ls():
     nr_args = len(sys.argv)
 
     all_flags = ["-a", "--all", "-R", "--recursive", "-l"]
-    dir_paths = []
+    list_paths = []
 
     ls_all = False
     ls_rec = False
@@ -799,7 +799,7 @@ def ls():
 
     for i in range(2, nr_args):
         
-        if sys.argv[i] in all_flags and len(dir_paths) > 0:
+        if sys.argv[i] in all_flags and len(list_paths) > 0:
             # invalid command
             return 255
 
@@ -813,7 +813,7 @@ def ls():
             ls_list = True
             nr_list_flags += 1
         else:
-            dir_paths.append(sys.argv[i])
+            list_paths.append(sys.argv[i])
             
     
     if nr_all_flags > 1 or nr_rec_flags > 1 or nr_list_flags > 1:
@@ -821,28 +821,28 @@ def ls():
         return 255
 
 
-    if len(dir_paths) == 0:
+    if len(list_paths) == 0:
         # ./main.py ls [options] .
-        dir_paths = [os.getcwd()]
+        list_paths = [os.getcwd()]
 
 
     ret_val = 0
     
-    for path_dir in dir_paths:
+    for listed_path in list_paths:
 
-        if os.path.isdir(path_dir) == False:
-            # the command fails for a given argument
-            ret_val = 176
+        if os.path.isdir(listed_path) == True:
+            old_cwd = os.getcwd()    # get current working directory
+            new_cwd = os.chdir(listed_path)
+
+            ls_list_dir_content(listed_path, ls_all, ls_rec, ls_list)
+
+            os.chdir(old_cwd)
             continue
-
         
-
-        old_cwd = os.getcwd()    # get current working directory
-        new_cwd = os.chdir(path_dir)
-
-        ls_list_dir_content(path_dir, ls_all, ls_rec, ls_list)
-
-        os.chdir(old_cwd)
+        if ls_list == False:
+            print(listed_path)
+        else:
+            ls_l_file(file_path)
 
 
     return ret_val
