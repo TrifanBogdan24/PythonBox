@@ -12,8 +12,10 @@ import re       # RegExp
 from pathlib import Path
 
 
+
 def pwd():
     print(os.getcwd())
+
 
 def echo():
 
@@ -414,15 +416,20 @@ def chmod():
     chmod_type = ''
 
     try:
-        oct_permission = int(permission)
-        chmod_type = 'numeric'
+        oct_permission = int(permission, 8)
+        chmod_type = 'numeric'    
     except:
         chmod_type = 'alfa'
 
+
+    if chmod_type == 'numeric' and permission[0] in "+-":
+        chmod_type = 'add_remove_numeric'
+
     
     if chmod_type == 'numeric':
-        int_permission = int(permission)
         return numeric_chmod()
+    elif chmod_type == 'add_remove_numeric':
+        return add_remove_numeric_chmod()
     else:
         return alfa_chmod()
 
@@ -443,7 +450,7 @@ def numeric_chmod():
 
 
     # converts the permission in an octal (base 8) integer
-    file_perm = int(sys.argv[2], 8)
+    file_oct_perm = int(sys.argv[2], 8)
 
     ret_val = 0
 
@@ -452,12 +459,109 @@ def numeric_chmod():
         file_name = sys.argv[i]
 
         try:
-            os.chmod(file_name, file_perm)
+            os.chmod(file_name, file_oct_perm)
         except:
             ret_val = 231
 
 
     return ret_val
+
+
+
+def add_remove_numeric_chmod():
+    """
+    ./main.py chmod +740 file
+    ./main.py chmod -740 file
+    """
+
+    nr_args = len(sys.argv)
+
+
+    perm_sign = sys.argv[2][0]
+
+    if not perm_sign in "+-":
+        # invalid command
+        return 255
+
+    perm = int(sys.argv[2][1:], 10)
+
+    if perm < 0 or perm > 777:
+        # invalid permission
+        return 255
+
+
+    # converts the permission in an octal (base 8) integer
+    oct_perm = int(sys.argv[2][1:], 8)
+
+
+    # getting permission bytes
+    read_owner = (True if oct(0o400 & oct_perm) != oct(0) else False)
+    write_owner = (True if oct(0o200 & oct_perm) != oct(0) else False)
+    exec_owner = (True if oct(0o100 & oct_perm) != oct(0) else False)
+
+    read_group = (True if oct(0o040 & oct_perm) != oct(0) else False)
+    write_group = (True if oct(0o020 & oct_perm) != oct(0) else False)
+    exec_group = (True if oct(0o010 & oct_perm) != oct(0) else False)
+
+    read_others = (True if oct(0o004 & oct_perm) != oct(0) else False)
+    write_others = (True if oct(0o002 & oct_perm) != oct(0) else False)
+    exec_others = (True if oct(0o001 & oct_perm) != oct(0) else False)
+
+    
+
+    ret_val = 0
+
+
+    for i in range(3, nr_args):
+        
+        file_name = sys.argv[i]
+
+        try:
+            # get file permissions
+            file_stats = os.stat(file_name)
+            file_perm = file_stats.st_mode
+
+
+
+            # modify file permsision            
+            if perm_sign == '+':
+                # we add permission using logic OR
+                if read_owner == True: file_perm |= 0o400
+                if write_owner == True: file_perm |= 0o200
+                if exec_owner == True: file_perm |= 0o100
+                
+                if read_group == True: file_perm |= 0o040
+                if write_group == True: file_perm |= 0o020
+                if exec_group == True: file_perm |= 0o010
+                
+                if read_others == True: file_perm |= 0o004
+                if write_others == True: file_perm |= 0o002
+                if exec_others == True: file_perm |= 0o001
+
+            else:
+                # we add permission using logic AND
+                if read_owner == True: file_perm &= 0o400
+                if write_owner == True: file_perm &= 0o200
+                if exec_owner == True: file_perm &= 0o100
+                
+                if read_group == True: file_perm &= 0o040
+                if write_group == True: file_perm &= 0o020
+                if exec_group == True: file_perm &= 0o010
+                
+                if read_others == True: file_perm &= 0o004
+                if write_others == True: file_perm &= 0o002
+                if exec_others == True: file_perm &= 0o001
+
+
+            # change file permission
+            os.chmod(file_name, file_perm)
+        
+        except:
+            ret_val = 231
+
+    return ret_val
+    
+
 
 
 
@@ -494,6 +598,7 @@ def alfa_chmod():
             continue
 
         try:
+            # get file permissions
             file_stats = os.stat(file_name)
             file_perm = file_stats.st_mode
         except:
@@ -506,7 +611,6 @@ def alfa_chmod():
 
 
         try:
-            print(new_file_perm)
             os.chmod(file_name, new_file_perm)
         except:
             # the command failed at changing the permissions of a file
@@ -553,10 +657,16 @@ def get_chmod_perm_modification():
             ugo += 'ugo'
        
         elif (char in "+-") == True:
-            if (sign != '') or (ugo == '') or (rwx != ''):
+            if (sign != '') or (rwx != ''):
                 # invalid comand: misplaced category
                 return (ugo, sign, rwx, 255)
+            
             sign = char     # + / -
+
+            if ugo == '':
+                # chmod +rwx file or chmod -x file
+                ugo += 'ugo'
+            
 
         elif char == 'r':
             if (ugo == '') or (sign == '') or ('r' in rwx == True):
@@ -596,10 +706,10 @@ def transform_file_permissions(file_perm, ugo, sign, rwx):
     # user(owner)
 
     if ('u' in ugo) and (sign == '+') and ('r' in rwx):
-        file_perm |= 0o100
+        file_perm |= 0o400
 
     if ('u' in ugo) and (sign == '-') and ('r' in rwx):
-        file_perm &= 0o100
+        file_perm &= 0o400
         
     
     if ('u' in ugo) and (sign == '+') and ('w' in rwx):
@@ -609,20 +719,20 @@ def transform_file_permissions(file_perm, ugo, sign, rwx):
         file_perm &= 0o200
     
     if ('u' in ugo) and (sign == '+') and ('x' in rwx):
-        file_perm |= 0o400
+        file_perm |= 0o100
     
     if ('u' in ugo) and (sign == '-') and ('x' in rwx):
-        file_perm &= 0o400
+        file_perm &= 0o100
 
 
 
     # group
 
     if ('g' in ugo) and (sign == '+') and ('r' in rwx):
-        file_perm |= 0o020
+        file_perm |= 0o040
 
     if ('g' in ugo) and (sign == '-') and ('r' in rwx):
-        file_perm &= 0o020
+        file_perm &= 0o040
     
     if ('g' in ugo) and (sign == '+') and ('w' in rwx):
         file_perm |= 0o020
@@ -631,10 +741,10 @@ def transform_file_permissions(file_perm, ugo, sign, rwx):
         file_perm &= 0o020
     
     if ('g' in ugo) and (sign == '+') and ('x' in rwx):
-        file_perm |= 0o040
+        file_perm |= 0o010
     
     if ('g' in ugo) and (sign == '-') and ('x' in rwx):
-        file_perm &= 0o040
+        file_perm &= 0o010
 
 
 
@@ -807,19 +917,19 @@ def ls_l_file(file_name):
 
 
     # owner (user)
-    perm += ('r' if oct(0o400 & file_perm) != 0 else '-')
-    perm += ('w' if oct(0o200 & file_perm) != 0 else '-')
-    perm += ('x' if oct(0o100 & file_perm) != 0 else '-')
+    perm += ('r' if oct(0o400 & file_perm) != oct(0) else '-')
+    perm += ('w' if oct(0o200 & file_perm) != oct(0) else '-')
+    perm += ('x' if oct(0o100 & file_perm) != oct(0) else '-')
     
     # group
-    perm += ('r' if oct(0o040 & file_perm) != 0 else '-')
-    perm += ('w' if oct(0o020 & file_perm) != 0 else '-')
-    perm += ('x' if oct(0o010 & file_perm) != 0 else '-')
+    perm += ('r' if oct(0o040 & file_perm) != oct(0) else '-')
+    perm += ('w' if oct(0o020 & file_perm) != oct(0) else '-')
+    perm += ('x' if oct(0o010 & file_perm) != oct(0) else '-')
     
     # other users
-    perm += ('r' if oct(0o004 & file_perm) != 0 else '-')
-    perm += ('w' if oct(0o002 & file_perm) != 0 else '-')
-    perm += ('x' if oct(0o001 & file_perm) != 0 else '-')
+    perm += ('r' if oct(0o004 & file_perm) != oct(0) else '-')
+    perm += ('w' if oct(0o002 & file_perm) != oct(0) else '-')
+    perm += ('x' if oct(0o001 & file_perm) != oct(0) else '-')
 
     
     print(perm, end = ' ')
